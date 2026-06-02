@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Both Hands Multi-Ramps → Max + MIDI CC</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+    }
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f5;
+    }
+    #controls {
+      margin: 10px 0;
+      padding: 10px;
+      gap: 6px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      background: #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,.15);
+      font-size: 13px;
+    }
+    #controls label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    #controls button {
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      background: #e2e8f0;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    #controls select {
+      padding: 4px 6px;
+      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      background: #ffffff;
+    }
+    #display-area {
+      flex: 1;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    #note-display {
+      margin: 8px 0;
+      font: 700 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: #111827;
+      text-align: left;
+      padding: 6px 10px;
+      background: #e5e7eb;
+      border-radius: 8px;
+      white-space: pre-line;
+    }
+    #container {
+      position: relative;
+      width: 960px;
+      height: 720px;
+      max-width: 100%;
+      aspect-ratio: 4 / 3;
+      background: #000;
+    }
+    #videoel,
+    #imageel,
+    #overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+    #videoel,
+    #imageel {
+      object-fit: cover;
+    }
+    canvas {
+      z-index: 1;
+      pointer-events: none;
+    }
+    @media (max-width: 1000px) {
+      #container {
+        width: 100%;
+        height: auto;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- CONTROL BAR -->
+  <div id="controls">
+    <button id="start-video">Start Video</button>
+    <button id="stop-video">Stop Video</button>
+
+    <button id="enable-midi">Enable MIDI CC</button>
+
+    <label>
+      MIDI Output:
+      <select id="midi-output-select">
+        <option value="">No MIDI output</option>
+      </select>
+    </label>
+
+    <label>
+      MIDI Ch:
+      <select id="midi-channel-select"></select>
+    </label>
+
+    <span id="midi-status">MIDI: off</span>
+
+    <label>
+      <input type="checkbox" id="toggle-draw-image" checked>
+      Draw Image
+    </label>
+
+    <label>
+      <input type="checkbox" id="toggle-draw-hands" checked>
+      Draw Hands
+    </label>
+
+    <label>
+      <input type="checkbox" id="toggle-flip-hands" checked>
+      Flip Hands (swap L/R)
+    </label>
+
+    <button id="flip-video">Flip Video</button>
+    <button id="flip-image" disabled>Flip Image</button>
+
+    <label>
+      Camera:
+      <select id="device-select"></select>
+    </label>
+
+    <label>
+      Upload Image:
+      <input type="file" id="upload-image" accept="image/*">
+    </label>
+  </div>
+
+  <!-- MAIN DISPLAY -->
+  <div id="display-area">
+    <div id="note-display">
+R main: 0.000 (none) → CC25
+R thumb: 0.000 (none) → CC27
+R pv:    0.000 (none) → CC29
+L main: 0.000 (none) → CC26
+L thumb:0.000 (none) → CC28
+L pv:   0.000 (none) → CC30
+    </div>
+    <div id="container">
+      <video id="videoel" autoplay playsinline style="display:none"></video>
+      <img   id="imageel" style="display:none">
+      <canvas id="overlay"></canvas>
+    </div>
+  </div>
+
+  <!-- SCRIPT -->
+  <script type="module">
+    import { GestureRecognizer, FilesetResolver, DrawingUtils }
+      from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/vision_bundle.js";
+
+    /* ---------- Max helper ---------- */
+    function maxOut(...args) {
+      if (window.max && typeof window.max.outlet === "function") {
+        window.max.outlet.apply(window.max, args);
+      }
+    }
+    /* -------------------------------- */
+
+    /* ---------- WebMIDI CC helper ---------- */
+    // Mapping starts at MIDI CC 25 and goes upward.
+    const CC_MAP = {
+      valueR:       25, // Right main: Open_Palm ↑ / Closed_Fist ↓
+      valueL:       26, // Left main:  Open_Palm ↑ / Closed_Fist ↓
+      valueR_thumb: 27, // Right thumb: Thumb_Up ↑ / Thumb_Down ↓
+      valueL_thumb: 28, // Left thumb:  Thumb_Up ↑ / Thumb_Down ↓
+      valueR_pv:    29, // Right PV:    Victory ↑ / Pointing_Up ↓
+      valueL_pv:    30  // Left PV:     Victory ↑ / Pointing_Up ↓
+    };
+
+    let midiAccess = null;
+    let midiOutput = null;
+    let midiChannel = 1;
+    const lastSentCC = new Map();
+
+    function valueToMidi(value) {
+      return Math.max(0, Math.min(127, Math.round(value * 127)));
+    }
+
+    function sendCC(name, value) {
+      const cc = CC_MAP[name];
+      if (!midiOutput || cc == null) return;
+
+      const midiValue = valueToMidi(value);
+      const cacheKey = `${midiOutput.id}:${midiChannel}:${cc}`;
+      if (lastSentCC.get(cacheKey) === midiValue) return; // avoid spamming repeated CCs
+
+      midiOutput.send([0xB0 + (midiChannel - 1), cc, midiValue]);
+      lastSentCC.set(cacheKey, midiValue);
+    }
+
+    // Send to both Max and direct MIDI CC.
+    function outputValue(name, value) {
+      maxOut(name, value);
+      sendCC(name, value);
+    }
+    /* -------------------------------------- */
+
+    /* ---------- DOM ---------- */
+    const video            = document.getElementById('videoel');
+    const imageEl          = document.getElementById('imageel');
+    const overlay          = document.getElementById('overlay');
+    const ctx              = overlay.getContext('2d');
+    const noteDisplay      = document.getElementById('note-display');
+    const deviceSelect     = document.getElementById('device-select');
+    const midiOutputSelect = document.getElementById('midi-output-select');
+    const midiChannelSelect= document.getElementById('midi-channel-select');
+    const enableMidiBtn    = document.getElementById('enable-midi');
+    const midiStatus       = document.getElementById('midi-status');
+    const startBtn         = document.getElementById('start-video');
+    const stopBtn          = document.getElementById('stop-video');
+    const uploadInput      = document.getElementById('upload-image');
+    const toggleDrawImage  = document.getElementById('toggle-draw-image');
+    const toggleDrawHands  = document.getElementById('toggle-draw-hands');
+    const toggleFlipHands  = document.getElementById('toggle-flip-hands');
+    const flipVideoBtn     = document.getElementById('flip-video');
+    const flipImgBtn       = document.getElementById('flip-image');
+
+    /* ---------- FLAGS ---------- */
+    let drawImage = true;
+    let drawHands = true;
+    let flipHands = true;
+    let flipVideo = false;
+    let flipImage = false;
+
+    /* ---------- VALUE STATE (0.0–1.0) ---------- */
+    const STEP = 0.01;  // ramp speed
+
+    const handR = {
+      mainValue:  0.0, mainDir:  0, lastMain:  "none",   // Open_Palm / Closed_Fist
+      thumbValue: 0.0, thumbDir: 0, lastThumb: "none",   // Thumb_Up / Thumb_Down
+      pvValue:    0.0, pvDir:    0, lastPV:    "none"    // Pointing_Up / Victory
+    };
+
+    const handL = {
+      mainValue:  0.0, mainDir:  0, lastMain:  "none",
+      thumbValue: 0.0, thumbDir: 0, lastThumb: "none",
+      pvValue:    0.0, pvDir:    0, lastPV:    "none"
+    };
+
+    function clamp01(x) {
+      if (x < 0) return 0;
+      if (x > 1) return 1;
+      return x;
+    }
+
+    /* ---------- UPDATE FUNCTIONS PER HAND ---------- */
+
+    // Main ramp (existing: Open_Palm ↑, Closed_Fist ↓) → valueR / valueL
+    function updateMain(handObj, gestureName, side) {
+      if (gestureName === "Open_Palm") {
+        handObj.mainDir = 1;
+      } else if (gestureName === "Closed_Fist") {
+        handObj.mainDir = -1;
+      } else {
+        handObj.mainDir = 0;
+      }
+
+      handObj.mainValue = clamp01(handObj.mainValue + handObj.mainDir * STEP);
+      handObj.lastMain = gestureName || "none";
+
+      if (side === "R") {
+        outputValue("valueR", handObj.mainValue);
+      } else {
+        outputValue("valueL", handObj.mainValue);
+      }
+    }
+
+    // Thumb ramp: Thumb_Up ↑, Thumb_Down ↓ → valueR_thumb / valueL_thumb
+    function updateThumb(handObj, gestureName, side) {
+      if (gestureName === "Thumb_Up") {
+        handObj.thumbDir = 1;
+      } else if (gestureName === "Thumb_Down") {
+        handObj.thumbDir = -1;
+      } else {
+        handObj.thumbDir = 0;
+      }
+
+      handObj.thumbValue = clamp01(handObj.thumbValue + handObj.thumbDir * STEP);
+      handObj.lastThumb = gestureName || "none";
+
+      if (side === "R") {
+        outputValue("valueR_thumb", handObj.thumbValue);
+      } else {
+        outputValue("valueL_thumb", handObj.thumbValue);
+      }
+    }
+
+    // Pointing/Victory ramp: Victory ↑, Pointing_Up ↓ → valueR_pv / valueL_pv
+    function updatePV(handObj, gestureName, side) {
+      if (gestureName === "Victory") {
+        handObj.pvDir = 1;
+      } else if (gestureName === "Pointing_Up") {
+        handObj.pvDir = -1;
+      } else {
+        handObj.pvDir = 0;
+      }
+
+      handObj.pvValue = clamp01(handObj.pvValue + handObj.pvDir * STEP);
+      handObj.lastPV = gestureName || "none";
+
+      if (side === "R") {
+        outputValue("valueR_pv", handObj.pvValue);
+      } else {
+        outputValue("valueL_pv", handObj.pvValue);
+      }
+    }
+
+    function updateDisplay() {
+      noteDisplay.textContent =
+        `R main:  ${handR.mainValue.toFixed(3)} (${handR.lastMain}) → CC25\n` +
+        `R thumb: ${handR.thumbValue.toFixed(3)} (${handR.lastThumb}) → CC27\n` +
+        `R pv:    ${handR.pvValue.toFixed(3)} (${handR.lastPV}) → CC29\n` +
+        `L main:  ${handL.mainValue.toFixed(3)} (${handL.lastMain}) → CC26\n` +
+        `L thumb: ${handL.thumbValue.toFixed(3)} (${handL.lastThumb}) → CC28\n` +
+        `L pv:    ${handL.pvValue.toFixed(3)} (${handL.lastPV}) → CC30`;
+    }
+
+    /* ---------- MEDIAPIPE SETUP ---------- */
+    const filesetResolver = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
+    );
+
+    const recognizer = await GestureRecognizer.createFromOptions(filesetResolver, {
+      baseOptions: {
+        modelAssetPath:
+          "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
+        delegate: "GPU"
+      },
+      runningMode: "VIDEO",
+      numHands: 2
+    });
+
+    const drawing = new DrawingUtils(ctx);
+
+    /* ---------- MAIN LOOP ---------- */
+    let lastVideoTime = -1;
+
+    function loop() {
+      if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
+        lastVideoTime = video.currentTime;
+        const res = recognizer.recognizeForVideo(video, Date.now());
+        res.image = video;
+        onResults(res);
+      }
+      requestAnimationFrame(loop);
+    }
+
+    function onResults(res) {
+      ctx.save();
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+      // Draw image (video or still)
+      if (drawImage && res.image) {
+        ctx.drawImage(res.image, 0, 0, overlay.width, overlay.height);
+      }
+
+      let rightHandGesture = null;
+      let leftHandGesture  = null;
+
+      // Detect gestures per hand (respect Flip Hands toggle)
+      res.handednesses?.forEach((hand, i) => {
+        const rawLabel = hand[0].categoryName; // "Left" or "Right"
+        const label = flipHands
+          ? (rawLabel === "Right" ? "Left" : "Right")
+          : rawLabel;
+
+        const gest = res.gestures.length ? res.gestures[i][0].categoryName : null;
+
+        if (label === "Right") {
+          rightHandGesture = gest;
+        } else if (label === "Left") {
+          leftHandGesture = gest;
+        }
+      });
+
+      // Update ALL ramps per hand with the single gesture
+      updateMain(handR, rightHandGesture, "R");
+      updateThumb(handR, rightHandGesture, "R");
+      updatePV(handR, rightHandGesture, "R");
+
+      updateMain(handL, leftHandGesture, "L");
+      updateThumb(handL, leftHandGesture, "L");
+      updatePV(handL, leftHandGesture, "L");
+
+      updateDisplay();
+
+      // Draw landmarks
+      if (drawHands && res.landmarks) {
+        res.landmarks.forEach(lm => {
+          drawing.drawConnectors(
+            lm,
+            GestureRecognizer.HAND_CONNECTIONS,
+            { color: "#00FF00", lineWidth: 1 }
+          );
+          drawing.drawLandmarks(
+            lm,
+            { color: "#FF0000", fillColor: "#FF0000", lineWidth: 1 }
+          );
+        });
+      }
+
+      ctx.restore();
+    }
+
+    /* ---------- CAMERA / IMAGE ---------- */
+
+    async function populateCameras() {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter(d => d.kind === 'videoinput');
+
+      cams.forEach(c => {
+        const opt = new Option(c.label || `Camera ${deviceSelect.length + 1}`, c.deviceId);
+        deviceSelect.add(opt);
+      });
+
+      deviceSelect.onchange = () => {
+        const id = deviceSelect.value || undefined;
+        startVideo(id);
+      };
+    }
+
+    async function startVideo(deviceId) {
+      const constraints = {
+        video: deviceId ? { deviceId: { exact: deviceId } } : true
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = stream;
+      await video.play();
+
+      video.style.display   = "";
+      imageEl.style.display = "none";
+
+      // Match canvas size to video element size
+      const rect = video.getBoundingClientRect();
+      overlay.width  = rect.width  || 960;
+      overlay.height = rect.height || 720;
+
+      loop();
+    }
+
+    function stopVideo() {
+      try {
+        const stream = video.srcObject;
+        if (stream) {
+          stream.getTracks().forEach(t => t.stop());
+        }
+        video.pause();
+        video.srcObject = null;
+        video.style.display = "none";
+        ctx.clearRect(0, 0, overlay.width, overlay.height);
+        noteDisplay.textContent = "📷 Video stopped";
+        lastVideoTime = -1;
+      } catch (e) {
+        console.error("Stop video error:", e);
+      }
+    }
+
+    /* ---------- MIDI UI ---------- */
+
+    function populateMidiChannels() {
+      midiChannelSelect.innerHTML = "";
+      for (let ch = 1; ch <= 16; ch++) {
+        const opt = new Option(String(ch), String(ch));
+        midiChannelSelect.add(opt);
+      }
+      midiChannelSelect.value = "1";
+      midiChannelSelect.onchange = () => {
+        midiChannel = Number(midiChannelSelect.value) || 1;
+        lastSentCC.clear();
+      };
+    }
+
+    function refreshMidiOutputs() {
+      midiOutputSelect.innerHTML = "";
+      midiOutputSelect.add(new Option("No MIDI output", ""));
+
+      if (!midiAccess) return;
+
+      for (const output of midiAccess.outputs.values()) {
+        midiOutputSelect.add(new Option(output.name || output.id, output.id));
+      }
+
+      if (midiAccess.outputs.size > 0) {
+        const firstOutput = midiAccess.outputs.values().next().value;
+        midiOutputSelect.value = firstOutput.id;
+        midiOutput = firstOutput;
+        midiStatus.textContent = `MIDI: ${midiOutput.name || midiOutput.id}, CC25–30`;
+      } else {
+        midiOutput = null;
+        midiStatus.textContent = "MIDI: no outputs found";
+      }
+    }
+
+    async function enableMIDI() {
+      if (!navigator.requestMIDIAccess) {
+        midiStatus.textContent = "MIDI: WebMIDI not supported in this browser";
+        alert("WebMIDI is not supported here. Try Chrome/Edge on localhost or HTTPS.");
+        return;
+      }
+
+      try {
+        midiAccess = await navigator.requestMIDIAccess({ sysex: false });
+        midiAccess.onstatechange = refreshMidiOutputs;
+        refreshMidiOutputs();
+      } catch (err) {
+        console.error("MIDI access error:", err);
+        midiStatus.textContent = "MIDI: permission denied/error";
+      }
+    }
+
+    enableMidiBtn.onclick = enableMIDI;
+
+    midiOutputSelect.onchange = () => {
+      midiOutput = midiAccess
+        ? midiAccess.outputs.get(midiOutputSelect.value) || null
+        : null;
+      lastSentCC.clear();
+      midiStatus.textContent = midiOutput
+        ? `MIDI: ${midiOutput.name || midiOutput.id}, CC25–30`
+        : "MIDI: off";
+    };
+
+    /* ---------- UI HANDLERS ---------- */
+
+    startBtn.onclick = () => {
+      const id = deviceSelect && deviceSelect.value ? deviceSelect.value : undefined;
+      startVideo(id);
+    };
+
+    stopBtn.onclick = stopVideo;
+
+    uploadInput.onchange = e => {
+      const f = e.target.files[0];
+      if (!f) return;
+
+      const url = URL.createObjectURL(f);
+      imageEl.src = url;
+      imageEl.onload = () => {
+        imageEl.style.display = "";
+        video.style.display = "none";
+        flipImgBtn.disabled = false;
+
+        const rect = imageEl.getBoundingClientRect();
+        overlay.width  = rect.width  || 960;
+        overlay.height = rect.height || 720;
+
+        onResults({
+          image: imageEl,
+          landmarks: [],
+          handednesses: [],
+          gestures: []
+        });
+      };
+    };
+
+    toggleDrawImage.onchange = e => {
+      drawImage = e.target.checked;
+    };
+
+    toggleDrawHands.onchange = e => {
+      drawHands = e.target.checked;
+    };
+
+    toggleFlipHands.onchange = e => {
+      flipHands = e.target.checked;
+    };
+
+    flipVideoBtn.onclick = () => {
+      flipVideo = !flipVideo;
+      const s = flipVideo ? -1 : 1;
+      video.style.transform   = `scaleX(${s})`;
+      overlay.style.transform = `scaleX(${s})`;
+    };
+
+    flipImgBtn.onclick = () => {
+      flipImage = !flipImage;
+      const s = flipImage ? -1 : 1;
+      imageEl.style.transform = `scaleX(${s})`;
+      overlay.style.transform = flipVideo ? `scaleX(-1)` : `scaleX(1)`;
+    };
+
+    /* ---------- BOOT ---------- */
+    populateMidiChannels();
+    await populateCameras();
+    startVideo();
+  </script>
+</body>
+</html>
