@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Both Hands Multi-Ramps → Max + MIDI CC</title>
+  <title>Both Hands Multi-Ramps → Direct MIDI CC25+</title>
   <style>
     html, body {
       height: 100%;
@@ -114,10 +114,8 @@
       </select>
     </label>
 
-    <label>
-      MIDI Ch:
-      <select id="midi-channel-select"></select>
-    </label>
+    <button id="test-cc-high">Test CC25 = 127</button>
+    <button id="test-cc-low">Test CC25 = 0</button>
 
     <span id="midi-status">MIDI: off</span>
 
@@ -193,23 +191,51 @@ L pv:   0.000 (none) → CC30
 
     let midiAccess = null;
     let midiOutput = null;
-    let midiChannel = 1;
+
+    // MIDI CC messages always contain a channel byte internally.
+    // The UI hides this and silently uses channel 1, so Max/Ableton/Logic can simply listen for CC25–CC30.
+    const MIDI_STATUS_CC_CH1 = 0xB0;
     const lastSentCC = new Map();
 
     function valueToMidi(value) {
       return Math.max(0, Math.min(127, Math.round(value * 127)));
     }
 
+    function setMidiStatus(text) {
+      if (midiStatus) midiStatus.textContent = text;
+    }
+
+    function getOutputName(output) {
+      return output ? (output.name || output.manufacturer || output.id || "selected output") : "none";
+    }
+
+    function sendRawCC(cc, midiValue, force = false) {
+      if (!midiOutput) {
+        setMidiStatus("MIDI: choose/enable an output first");
+        return false;
+      }
+
+      const value = Math.max(0, Math.min(127, Math.round(midiValue)));
+      const cacheKey = `${midiOutput.id}:${cc}`;
+      if (!force && lastSentCC.get(cacheKey) === value) return true;
+
+      try {
+        // Control Change on hidden/fixed MIDI channel 1: [176, controller, value].
+        midiOutput.send([MIDI_STATUS_CC_CH1, cc, value]);
+        lastSentCC.set(cacheKey, value);
+        setMidiStatus(`MIDI: sent CC${cc} = ${value} → ${getOutputName(midiOutput)}`);
+        return true;
+      } catch (err) {
+        console.error("MIDI send error:", err);
+        setMidiStatus("MIDI: send failed — check browser/output");
+        return false;
+      }
+    }
+
     function sendCC(name, value) {
       const cc = CC_MAP[name];
-      if (!midiOutput || cc == null) return;
-
-      const midiValue = valueToMidi(value);
-      const cacheKey = `${midiOutput.id}:${midiChannel}:${cc}`;
-      if (lastSentCC.get(cacheKey) === midiValue) return; // avoid spamming repeated CCs
-
-      midiOutput.send([0xB0 + (midiChannel - 1), cc, midiValue]);
-      lastSentCC.set(cacheKey, midiValue);
+      if (cc == null) return;
+      sendRawCC(cc, valueToMidi(value));
     }
 
     // Send to both Max and direct MIDI CC.
@@ -227,8 +253,9 @@ L pv:   0.000 (none) → CC30
     const noteDisplay      = document.getElementById('note-display');
     const deviceSelect     = document.getElementById('device-select');
     const midiOutputSelect = document.getElementById('midi-output-select');
-    const midiChannelSelect= document.getElementById('midi-channel-select');
     const enableMidiBtn    = document.getElementById('enable-midi');
+    const testCCHighBtn    = document.getElementById('test-cc-high');
+    const testCCLowBtn     = document.getElementById('test-cc-low');
     const midiStatus       = document.getElementById('midi-status');
     const startBtn         = document.getElementById('start-video');
     const stopBtn          = document.getElementById('stop-video');
@@ -482,20 +509,9 @@ L pv:   0.000 (none) → CC30
 
     /* ---------- MIDI UI ---------- */
 
-    function populateMidiChannels() {
-      midiChannelSelect.innerHTML = "";
-      for (let ch = 1; ch <= 16; ch++) {
-        const opt = new Option(String(ch), String(ch));
-        midiChannelSelect.add(opt);
-      }
-      midiChannelSelect.value = "1";
-      midiChannelSelect.onchange = () => {
-        midiChannel = Number(midiChannelSelect.value) || 1;
-        lastSentCC.clear();
-      };
-    }
-
     function refreshMidiOutputs() {
+      const previousOutputId = midiOutputSelect.value;
+
       midiOutputSelect.innerHTML = "";
       midiOutputSelect.add(new Option("No MIDI output", ""));
 
@@ -505,21 +521,30 @@ L pv:   0.000 (none) → CC30
         midiOutputSelect.add(new Option(output.name || output.id, output.id));
       }
 
-      if (midiAccess.outputs.size > 0) {
-        const firstOutput = midiAccess.outputs.values().next().value;
-        midiOutputSelect.value = firstOutput.id;
-        midiOutput = firstOutput;
-        midiStatus.textContent = `MIDI: ${midiOutput.name || midiOutput.id}, CC25–30`;
+      // Prefer keeping the previously selected output. Otherwise auto-select the first available output.
+      let selectedOutput = null;
+      if (previousOutputId && midiAccess.outputs.has(previousOutputId)) {
+        selectedOutput = midiAccess.outputs.get(previousOutputId);
+      } else if (midiAccess.outputs.size > 0) {
+        selectedOutput = midiAccess.outputs.values().next().value;
+      }
+
+      if (selectedOutput) {
+        midiOutputSelect.value = selectedOutput.id;
+        midiOutput = selectedOutput;
+        lastSentCC.clear();
+        setMidiStatus(`MIDI: ready → ${getOutputName(midiOutput)} | CC25–30`);
       } else {
+        midiOutputSelect.value = "";
         midiOutput = null;
-        midiStatus.textContent = "MIDI: no outputs found";
+        setMidiStatus("MIDI: no outputs found — enable IAC Driver / virtual MIDI port");
       }
     }
 
     async function enableMIDI() {
       if (!navigator.requestMIDIAccess) {
-        midiStatus.textContent = "MIDI: WebMIDI not supported in this browser";
-        alert("WebMIDI is not supported here. Try Chrome/Edge on localhost or HTTPS.");
+        setMidiStatus("MIDI: WebMIDI not supported here");
+        alert("WebMIDI is not supported here. Use Chrome/Edge as a normal browser, ideally from localhost or HTTPS.");
         return;
       }
 
@@ -529,20 +554,37 @@ L pv:   0.000 (none) → CC30
         refreshMidiOutputs();
       } catch (err) {
         console.error("MIDI access error:", err);
-        midiStatus.textContent = "MIDI: permission denied/error";
+        setMidiStatus("MIDI: permission denied/error");
+        alert("MIDI permission was denied or failed. In Chrome/Edge, allow MIDI access, then reload and try again.");
       }
     }
 
     enableMidiBtn.onclick = enableMIDI;
 
-    midiOutputSelect.onchange = () => {
+    midiOutputSelect.onchange = async () => {
       midiOutput = midiAccess
         ? midiAccess.outputs.get(midiOutputSelect.value) || null
         : null;
+
       lastSentCC.clear();
-      midiStatus.textContent = midiOutput
-        ? `MIDI: ${midiOutput.name || midiOutput.id}, CC25–30`
-        : "MIDI: off";
+
+      if (midiOutput && typeof midiOutput.open === "function") {
+        try { await midiOutput.open(); } catch (err) { console.warn("MIDI output open warning:", err); }
+      }
+
+      setMidiStatus(midiOutput
+        ? `MIDI: ready → ${getOutputName(midiOutput)} | CC25–30`
+        : "MIDI: off");
+    };
+
+    testCCHighBtn.onclick = async () => {
+      if (!midiAccess) await enableMIDI();
+      sendRawCC(25, 127, true);
+    };
+
+    testCCLowBtn.onclick = async () => {
+      if (!midiAccess) await enableMIDI();
+      sendRawCC(25, 0, true);
     };
 
     /* ---------- UI HANDLERS ---------- */
@@ -605,7 +647,6 @@ L pv:   0.000 (none) → CC30
     };
 
     /* ---------- BOOT ---------- */
-    populateMidiChannels();
     await populateCameras();
     startVideo();
   </script>
