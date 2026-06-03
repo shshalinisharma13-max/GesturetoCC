@@ -1,665 +1,568 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Both Hands Multi-Ramps → Direct MIDI CC25+</title>
-  <style>
-    html, body {
-      height: 100%;
-      margin: 0;
-    }
-    body {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f5f5f5;
-    }
-    #controls {
-      margin: 10px 0;
-      padding: 10px;
-      gap: 6px;
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      background: #ffffff;
-      border-radius: 8px;
-      box-shadow: 0 0 10px rgba(0,0,0,.15);
-      font-size: 13px;
-    }
-    #controls label {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-    #controls button {
-      padding: 6px 10px;
-      border-radius: 6px;
-      border: 1px solid #cbd5e1;
-      background: #e2e8f0;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    #controls select {
-      padding: 4px 6px;
-      border-radius: 6px;
-      border: 1px solid #cbd5e1;
-      background: #ffffff;
-    }
-    #display-area {
-      flex: 1;
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      position: relative;
-    }
-    #note-display {
-      margin: 8px 0;
-      font: 700 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
-      color: #111827;
-      text-align: left;
-      padding: 6px 10px;
-      background: #e5e7eb;
-      border-radius: 8px;
-      white-space: pre-line;
-    }
-    #container {
-      position: relative;
-      width: 960px;
-      height: 720px;
-      max-width: 100%;
-      aspect-ratio: 4 / 3;
-      background: #000;
-    }
-    #videoel,
-    #imageel,
-    #overlay {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-    }
-    #videoel,
-    #imageel {
-      object-fit: cover;
-    }
-    canvas {
-      z-index: 1;
-      pointer-events: none;
-    }
-    @media (max-width: 1000px) {
-      #container {
-        width: 100%;
-        height: auto;
-      }
-    }
-  </style>
+<meta charset="UTF-8">
+<title>Gesture Instrument — Notes / Chords / CC (All-in-One)</title>
+<style>
+  html,body{height:100%;margin:0}
+  body{display:flex;flex-direction:column;align-items:center;
+       font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+       background:#f5f5f5}
+
+  /* ---- Mode switcher (segmented) ---- */
+  #mode-bar{display:flex;gap:6px;margin:10px 0 0;background:#fff;padding:6px;
+            border-radius:10px;box-shadow:0 0 10px rgba(0,0,0,.15)}
+  #mode-bar button{padding:8px 16px;border:1px solid #cbd5e1;background:#f1f5f9;
+                   border-radius:8px;font-weight:700;cursor:pointer;font-size:14px;color:#334155}
+  #mode-bar button.active{background:#2563eb;border-color:#2563eb;color:#fff}
+
+  /* ---- Control bar ---- */
+  #controls{margin:10px 0;padding:10px;gap:6px;display:flex;flex-wrap:wrap;align-items:center;
+            background:#fff;border-radius:8px;box-shadow:0 0 10px rgba(0,0,0,.2);font-size:13px}
+  #controls hr{flex-basis:100%;border:none;margin:6px 0}
+  #controls label{display:flex;align-items:center;gap:4px}
+  #controls button{padding:6px 10px;border-radius:6px;border:1px solid #cbd5e1;
+                   background:#e2e8f0;font-weight:600;cursor:pointer}
+  #controls select{padding:4px 6px;border-radius:6px;border:1px solid #cbd5e1;background:#fff}
+  #midi-status,#active-chan,#sustain-state{font-size:12px}
+  #active-chan{font-weight:bold}
+  #sustain-state{font-weight:bold;color:green;margin-left:6px}
+
+  /* ---- Display ---- */
+  #display-area{flex:1;width:100%;display:flex;flex-direction:column;
+                align-items:center;justify-content:center;position:relative}
+  #note-display{margin:10px 0;font:700 14px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;
+                color:#111827;text-align:left;white-space:pre-line;display:inline-block;
+                padding:6px 12px;background:#e5e7eb;border-radius:8px}
+  #container{position:relative;width:960px;height:720px;max-width:100%;background:#000}
+  #overlay,#videoel,#imageel{position:absolute;top:0;left:0}
+  canvas{z-index:1;pointer-events:none}
+
+  /* ---- Side instruction card ---- */
+  .side-card{position:fixed;top:140px;z-index:20;background:#fff;color:#111;
+             border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 10px 22px rgba(0,0,0,.18)}
+  #comp-card{left:12px;width:320px;max-width:40vw;padding:10px 12px;
+             font:600 13px/1.35 ui-sans-serif,system-ui}
+  #comp-card h3{margin:0 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.6px;opacity:.7}
+  #comp-card .line{font:700 13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;
+                   background:#f6f7fb;border:1px solid #e5e7eb;border-radius:8px;
+                   padding:6px 8px;white-space:pre;margin:6px 0}
+  #comp-card .note{font:600 12px/1.3 ui-sans-serif;opacity:.7;margin-top:6px}
+
+  @media (max-width:1100px){ #comp-card{display:none} }
+</style>
 </head>
 
 <body>
-  <!-- CONTROL BAR -->
+  <!-- ---------- MODE SWITCHER ---------- -->
+  <div id="mode-bar">
+    <button data-mode="notes">🎵 Notes</button>
+    <button data-mode="chords">🎹 Chords</button>
+    <button data-mode="cc">🎚️ CC Ramps</button>
+  </div>
+
+  <!-- ---------- CONTROL BAR ---------- -->
   <div id="controls">
     <button id="start-video">Start Video</button>
-    <button id="stop-video">Stop Video</button>
-
-    <button id="enable-midi">Enable MIDI CC</button>
-
-    <label>
-      MIDI Output:
-      <select id="midi-output-select">
-        <option value="">No MIDI output</option>
-      </select>
-    </label>
-
-    <button id="test-cc-high">Test CC25 = 127</button>
-    <button id="test-cc-low">Test CC25 = 0</button>
-
-    <span id="midi-status">MIDI: off</span>
-
-    <label>
-      <input type="checkbox" id="toggle-draw-image" checked>
-      Draw Image
-    </label>
-
-    <label>
-      <input type="checkbox" id="toggle-draw-hands" checked>
-      Draw Hands
-    </label>
-
-    <label>
-      <input type="checkbox" id="toggle-flip-hands" checked>
-      Flip Hands (swap L/R)
-    </label>
-
+    <button id="stop-video" style="border:1px solid #64748b;">⏹️ Stop Video</button>
+    <label>Camera: <select id="device-select"></select></label>
+    <label>Upload Image: <input type="file" id="upload-image" accept="image/*"></label>
+    <hr>
+    <label><input type="checkbox" id="toggle-draw-image" checked>Draw Image</label>
+    <label><input type="checkbox" id="toggle-draw-hands" checked>Draw Hands</label>
+    <label><input type="checkbox" id="toggle-flip-hands" checked>Flip Hands</label>
     <button id="flip-video">Flip Video</button>
     <button id="flip-image" disabled>Flip Image</button>
-
-    <label>
-      Camera:
-      <select id="device-select"></select>
-    </label>
-
-    <label>
-      Upload Image:
-      <input type="file" id="upload-image" accept="image/*">
-    </label>
+    <hr>
+    <label>MIDI Output: <select id="midi-select"></select></label>
+    <button id="enable-midi">Enable / Refresh MIDI</button>
+    <button id="test-cc-high" class="cc-only">Test CC25 = 127</button>
+    <button id="test-cc-low"  class="cc-only">Test CC25 = 0</button>
+    <span id="midi-status">MIDI: off</span>
+    <span id="chan-sustain" class="note-chord-only">
+      <span id="active-chan"></span><span id="sustain-state" style="display:none">Sustain ON</span>
+    </span>
+    <button id="panic" style="margin-left:8px;font-weight:700;border:1px solid #ef4444;background:#fee2e2;">
+      ⛔ Stop All Sound
+    </button>
   </div>
 
-  <!-- MAIN DISPLAY -->
+  <!-- ---------- MAIN DISPLAY ---------- -->
   <div id="display-area">
-    <div id="note-display">
-R main:    0 (none) → CC25
-R thumb:   0 (none) → CC27
-R pv:      0 (none) → CC29
-L main:    0 (none) → CC26
-L thumb:   0 (none) → CC28
-L pv:      0 (none) → CC30
-    </div>
+    <div id="note-display">No note playing</div>
     <div id="container">
-      <video id="videoel" autoplay playsinline style="display:none"></video>
-      <img   id="imageel" style="display:none">
-      <canvas id="overlay"></canvas>
+      <video id="videoel" autoplay playsinline width="960" height="720" style="display:none"></video>
+      <img   id="imageel"                                  width="960" height="720" style="display:none">
+      <canvas id="overlay"                                 width="960" height="720"></canvas>
     </div>
   </div>
 
-  <!-- SCRIPT -->
-  <script type="module">
-    import { GestureRecognizer, FilesetResolver, DrawingUtils }
-      from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/vision_bundle.js";
+  <!-- ---------- INSTRUCTION CARD (filled per mode) ---------- -->
+  <aside id="comp-card" class="side-card" aria-label="Instructions"></aside>
 
-    /* ---------- Max helper ---------- */
-    function maxOut(...args) {
-      if (window.max && typeof window.max.outlet === "function") {
-        window.max.outlet.apply(window.max, args);
-      }
-    }
-    /* -------------------------------- */
+<script type="module">
+import { GestureRecognizer, FilesetResolver, DrawingUtils }
+  from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/vision_bundle.js";
 
-    /* ---------- WebMIDI CC helper ---------- */
-    // Mapping starts at MIDI CC 25 and goes upward.
-    const CC_MAP = {
-      valueR:       25, // Right main: Open_Palm ↑ / Closed_Fist ↓
-      valueL:       26, // Left main:  Open_Palm ↑ / Closed_Fist ↓
-      valueR_thumb: 27, // Right thumb: Thumb_Up ↑ / Thumb_Down ↓
-      valueL_thumb: 28, // Left thumb:  Thumb_Up ↑ / Thumb_Down ↓
-      valueR_pv:    29, // Right PV:    Victory ↑ / Pointing_Up ↓
-      valueL_pv:    30  // Left PV:     Victory ↑ / Pointing_Up ↓
-    };
+/* ============================================================
+   MODE MAPS
+   ============================================================ */
 
-    let midiAccess = null;
-    let midiOutput = null;
+/* ----- Right hand → single notes (Notes mode) ----- */
+const gestureToNote = {
+  Open_Palm:60, Closed_Fist:62, Pointing_Up:63, Victory:65,
+  Thumb_Up:67,  Thumb_Down:68,  ILoveYou:70
+};
 
-    // MIDI CC messages always contain a channel byte internally.
-    // The UI hides this and silently uses channel 1, so Max/Ableton/Logic can simply listen for CC25–CC30.
-    const MIDI_STATUS_CC_CH1 = 0xB0;
-    const lastSentCC = new Map();
+/* ----- Right hand → C-minor diatonic triads (Chords mode) ----- */
+const gestureToChord = {
+  Open_Palm  :{name:"Cm",   notes:[60,63,67]}, // C  - E♭ - G
+  Closed_Fist:{name:"Ddim", notes:[62,65,68]}, // D  - F  - A♭
+  Pointing_Up:{name:"E♭",   notes:[63,67,70]}, // E♭ - G  - B♭
+  Victory    :{name:"Fm",   notes:[65,68,72]}, // F  - A♭ - C
+  Thumb_Up   :{name:"Gm",   notes:[67,70,74]}, // G  - B♭ - D
+  Thumb_Down :{name:"A♭",   notes:[68,72,75]}, // A♭ - C  - E♭
+  ILoveYou   :{name:"B♭",   notes:[70,74,77]}  // B♭ - D  - F
+};
 
-    // Ramp values now live directly in MIDI range (0–127); just clamp + round.
-    function valueToMidi(value) {
-      return Math.max(0, Math.min(127, Math.round(value)));
-    }
+/* ----- Left hand → channel select (Notes & Chords) ----- */
+const gestureToChannel = { Closed_Fist:1, Open_Palm:2, Pointing_Up:3, Victory:4 };
+const sustainOnGesture  = "Thumb_Up";
+const sustainOffGesture = "Thumb_Down";
 
-    function setMidiStatus(text) {
-      if (midiStatus) midiStatus.textContent = text;
-    }
+/* ----- CC mode: both hands ramp CC25–30 (channel 1) ----- */
+const CC_MAP = {
+  valueR:25, valueL:26,        // main:  Open_Palm ↑ / Closed_Fist ↓
+  valueR_thumb:27, valueL_thumb:28, // thumb: Thumb_Up ↑ / Thumb_Down ↓
+  valueR_pv:29, valueL_pv:30   // pv:    Victory ↑ / Pointing_Up ↓
+};
+const RAMP_FRACTION_PER_FRAME = 0.01;        // ~100 frames for a full 0→127 sweep
+const STEP = RAMP_FRACTION_PER_FRAME * 127;  // raise = faster ramps, lower = finer control
+const handR = { mainValue:0,mainDir:0,lastMain:"none", thumbValue:0,thumbDir:0,lastThumb:"none", pvValue:0,pvDir:0,lastPV:"none" };
+const handL = { mainValue:0,mainDir:0,lastMain:"none", thumbValue:0,thumbDir:0,lastThumb:"none", pvValue:0,pvDir:0,lastPV:"none" };
 
-    function getOutputName(output) {
-      return output ? (output.name || output.manufacturer || output.id || "selected output") : "none";
-    }
+/* ============================================================
+   DOM
+   ============================================================ */
+const video        = document.getElementById('videoel');
+const imageEl      = document.getElementById('imageel');
+const overlay      = document.getElementById('overlay');
+const ctx          = overlay.getContext('2d');
+const noteDisplay  = document.getElementById('note-display');
+const deviceSelect = document.getElementById('device-select');
+const midiSelect   = document.getElementById('midi-select');
+const enableMidiBtn= document.getElementById('enable-midi');
+const testHighBtn  = document.getElementById('test-cc-high');
+const testLowBtn   = document.getElementById('test-cc-low');
+const midiStatus   = document.getElementById('midi-status');
+const activeChanEl = document.getElementById('active-chan');
+const sustainStateEl = document.getElementById('sustain-state');
+const compCard     = document.getElementById('comp-card');
+const flipVideoBtn = document.getElementById('flip-video');
+const flipImgBtn   = document.getElementById('flip-image');
 
-    function sendRawCC(cc, midiValue, force = false) {
-      if (!midiOutput) {
-        setMidiStatus("MIDI: choose/enable an output first");
-        return false;
-      }
+let drawImage=true, drawHands=true, flipHands=true, flipVideo=false, flipImage=false;
 
-      const value = Math.max(0, Math.min(127, Math.round(midiValue)));
-      const cacheKey = `${midiOutput.id}:${cc}`;
-      if (!force && lastSentCC.get(cacheKey) === value) return true;
+/* ============================================================
+   STATE
+   ============================================================ */
+let currentMode = "";                       // "notes" | "chords" | "cc"
+let activeChannel = 1;
+const sustainLatch = Array(17).fill(false); // channels 1..16
+const noteState  = { note:null, channel:null };
+const chordState = { chord:null, chordName:null, channel:null };
 
-      try {
-        // Control Change on hidden/fixed MIDI channel 1: [176, controller, value].
-        midiOutput.send([MIDI_STATUS_CC_CH1, cc, value]);
-        lastSentCC.set(cacheKey, value);
-        setMidiStatus(`MIDI: sent CC${cc} = ${value} → ${getOutputName(midiOutput)}`);
-        return true;
-      } catch (err) {
-        console.error("MIDI send error:", err);
-        setMidiStatus("MIDI: send failed — check browser/output");
-        return false;
-      }
-    }
+/* ============================================================
+   MIDI LAYER  (unified for notes / chords / CC + Max bridge)
+   ============================================================ */
+let midiAccess = null, midiOutput = null;
+const lastSentCC = new Map();
+const MIDI_CC_CH1 = 0xB0;
 
-    function sendCC(name, value) {
-      const cc = CC_MAP[name];
-      if (cc == null) return;
-      sendRawCC(cc, valueToMidi(value));
-    }
+const getOutputName = o => o ? (o.name || o.manufacturer || o.id || "output") : "none";
+const setMidiStatus = t => { midiStatus.textContent = t; };
 
-    // Send to both Max and direct MIDI CC.
-    // value is now in MIDI range (0–127):
-    //   • MIDI gets the raw 0–127 value.
-    //   • Max gets a normalized 0–1 so any existing Max patch keeps the range it expects.
-    function outputValue(name, value) {
-      maxOut(name, value / 127);
-      sendCC(name, value);
-    }
-    /* -------------------------------------- */
+function sendNoteOn (ch,note,vel=80){ midiOutput?.send([0x90+(ch-1),note,vel]); }
+function sendNoteOff(ch,note)       { midiOutput?.send([0x80+(ch-1),note,0]); }
+function sendChordOn (ch,notes,vel=80){ notes.forEach(n=>midiOutput?.send([0x90+(ch-1),n,vel])); }
+function sendChordOff(ch,notes)       { notes.forEach(n=>midiOutput?.send([0x80+(ch-1),n,0])); }
+function sendCC64(ch,val){ midiOutput?.send([0xB0+(ch-1),64,val]); }
+const sameChord = (a,b) => Array.isArray(a)&&Array.isArray(b)&&a.length===b.length&&a.every((n,i)=>n===b[i]);
 
-    /* ---------- DOM ---------- */
-    const video            = document.getElementById('videoel');
-    const imageEl          = document.getElementById('imageel');
-    const overlay          = document.getElementById('overlay');
-    const ctx              = overlay.getContext('2d');
-    const noteDisplay      = document.getElementById('note-display');
-    const deviceSelect     = document.getElementById('device-select');
-    const midiOutputSelect = document.getElementById('midi-output-select');
-    const enableMidiBtn    = document.getElementById('enable-midi');
-    const testCCHighBtn    = document.getElementById('test-cc-high');
-    const testCCLowBtn     = document.getElementById('test-cc-low');
-    const midiStatus       = document.getElementById('midi-status');
-    const startBtn         = document.getElementById('start-video');
-    const stopBtn          = document.getElementById('stop-video');
-    const uploadInput      = document.getElementById('upload-image');
-    const toggleDrawImage  = document.getElementById('toggle-draw-image');
-    const toggleDrawHands  = document.getElementById('toggle-draw-hands');
-    const toggleFlipHands  = document.getElementById('toggle-flip-hands');
-    const flipVideoBtn     = document.getElementById('flip-video');
-    const flipImgBtn       = document.getElementById('flip-image');
+function sendRawCC(cc, val, force=false){
+  if(!midiOutput){ setMidiStatus("MIDI: choose/enable an output first"); return false; }
+  const v = Math.max(0,Math.min(127,Math.round(val)));
+  const key = `${midiOutput.id}:${cc}`;
+  if(!force && lastSentCC.get(key)===v) return true;   // skip duplicate CC spam
+  try{
+    midiOutput.send([MIDI_CC_CH1, cc, v]);             // CC on fixed channel 1
+    lastSentCC.set(key,v);
+    setMidiStatus(`MIDI: CC${cc} = ${v} → ${getOutputName(midiOutput)}`);
+    return true;
+  }catch(err){ console.error("MIDI send error:",err); setMidiStatus("MIDI: send failed"); return false; }
+}
+const valueToMidi = v => Math.max(0,Math.min(127,Math.round(v)));
+function sendCC(name,val){ const cc=CC_MAP[name]; if(cc==null) return; sendRawCC(cc, valueToMidi(val)); }
 
-    /* ---------- FLAGS ---------- */
-    let drawImage = true;
-    let drawHands = true;
-    let flipHands = true;
-    let flipVideo = false;
-    let flipImage = false;
+/* Max/MSP bridge — no-op in a normal browser, active inside a Max jweb object */
+function maxOut(...a){ if(window.max && typeof window.max.outlet==="function") window.max.outlet.apply(window.max,a); }
+function outputValue(name,val){ maxOut(name, val/127); sendCC(name,val); }
 
-    /* ---------- VALUE STATE (MIDI 0–127) ---------- */
-    // Each ramp value now lives directly in MIDI CC range (0–127) as a float,
-    // so the hand gestures act as a gradual 0–127 CC controller. We keep it as a
-    // float for smooth ramping and only round when sending MIDI / drawing the readout.
-    const RAMP_FRACTION_PER_FRAME = 0.01;        // ~100 frames for a full 0→127 sweep (same feel as before)
-    const STEP = RAMP_FRACTION_PER_FRAME * 127;  // MIDI units added/removed per video frame
-    //   ↑ raise STEP for faster ramps, lower it for finer/slower control.
+function refreshMidiOutputs(){
+  const prev = midiSelect.value;
+  midiSelect.innerHTML = "";
+  midiSelect.add(new Option("No MIDI output",""));
+  if(midiAccess){ for(const o of midiAccess.outputs.values()) midiSelect.add(new Option(o.name||o.id, o.id)); }
 
-    const handR = {
-      mainValue:  0.0, mainDir:  0, lastMain:  "none",   // Open_Palm / Closed_Fist
-      thumbValue: 0.0, thumbDir: 0, lastThumb: "none",   // Thumb_Up / Thumb_Down
-      pvValue:    0.0, pvDir:    0, lastPV:    "none"    // Pointing_Up / Victory
-    };
+  let sel = null;
+  if(prev && midiAccess?.outputs.has(prev)) sel = midiAccess.outputs.get(prev);
+  else if(midiAccess && midiAccess.outputs.size>0) sel = midiAccess.outputs.values().next().value;
 
-    const handL = {
-      mainValue:  0.0, mainDir:  0, lastMain:  "none",
-      thumbValue: 0.0, thumbDir: 0, lastThumb: "none",
-      pvValue:    0.0, pvDir:    0, lastPV:    "none"
-    };
+  if(sel){ midiSelect.value=sel.id; midiOutput=sel; lastSentCC.clear(); setMidiStatus(`MIDI: ${getOutputName(midiOutput)}`); }
+  else   { midiSelect.value="";     midiOutput=null; setMidiStatus(midiAccess ? "MIDI: no outputs found — enable IAC / virtual port" : "MIDI: off"); }
+}
 
-    // Clamp to the MIDI CC range.
-    function clampMidi(x) {
-      if (x < 0) return 0;
-      if (x > 127) return 127;
-      return x;
-    }
+async function initMIDI(){
+  if(!navigator.requestMIDIAccess){ setMidiStatus("MIDI: WebMIDI not supported here"); return; }
+  try{
+    midiAccess = await navigator.requestMIDIAccess({ sysex:false });
+    midiAccess.onstatechange = refreshMidiOutputs;
+    refreshMidiOutputs();
+  }catch(err){ console.error("MIDI access error:",err); setMidiStatus("MIDI: permission denied/error"); }
+}
 
-    /* ---------- UPDATE FUNCTIONS PER HAND ---------- */
+midiSelect.onchange = async () => {
+  midiOutput = midiAccess ? (midiAccess.outputs.get(midiSelect.value)||null) : null;
+  lastSentCC.clear();
+  if(midiOutput && typeof midiOutput.open==="function"){ try{ await midiOutput.open(); }catch(e){ console.warn("MIDI open:",e); } }
+  setMidiStatus(midiOutput ? `MIDI: ${getOutputName(midiOutput)}` : "MIDI: off");
+};
+enableMidiBtn.onclick = initMIDI;
+testHighBtn.onclick = async () => { if(!midiAccess) await initMIDI(); sendRawCC(25,127,true); };
+testLowBtn.onclick  = async () => { if(!midiAccess) await initMIDI(); sendRawCC(25,0,true);   };
 
-    // Main ramp (existing: Open_Palm ↑, Closed_Fist ↓) → valueR / valueL
-    function updateMain(handObj, gestureName, side) {
-      if (gestureName === "Open_Palm") {
-        handObj.mainDir = 1;
-      } else if (gestureName === "Closed_Fist") {
-        handObj.mainDir = -1;
-      } else {
-        handObj.mainDir = 0;
-      }
+/* ---- channel / sustain status (Notes & Chords) ---- */
+function showSustainStatus(){
+  const on = sustainLatch[activeChannel] && (currentMode==="notes"||currentMode==="chords");
+  sustainStateEl.style.display = on ? 'inline' : 'none';
+}
+function setActiveChannel(ch){
+  activeChannel = ch;
+  activeChanEl.textContent = `Active Channel: ${ch}`;
+  showSustainStatus();
+}
 
-      handObj.mainValue = clampMidi(handObj.mainValue + handObj.mainDir * STEP);
-      handObj.lastMain = gestureName || "none";
+/* ============================================================
+   MEDIAPIPE  (created ONCE, reused by every mode)
+   ============================================================ */
+const filesetResolver = await FilesetResolver.forVisionTasks(
+  "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm");
+const recognizer = await GestureRecognizer.createFromOptions(filesetResolver,{
+  baseOptions:{ modelAssetPath:
+    "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
+    delegate:"GPU" },
+  runningMode:"VIDEO", numHands:2 });
+const drawing = new DrawingUtils(ctx);
 
-      if (side === "R") {
-        outputValue("valueR", handObj.mainValue);
-      } else {
-        outputValue("valueL", handObj.mainValue);
-      }
-    }
+/* ============================================================
+   ONE PERPETUAL LOOP  (never restarts on mode switch)
+   ============================================================ */
+let lastVideoTime = -1;
+function loop(){
+  if(video.readyState>=2 && video.currentTime!==lastVideoTime){
+    lastVideoTime = video.currentTime;
+    const res = recognizer.recognizeForVideo(video, Date.now());
+    res.image = video;
+    onResults(res);
+  }
+  requestAnimationFrame(loop);
+}
 
-    // Thumb ramp: Thumb_Up ↑, Thumb_Down ↓ → valueR_thumb / valueL_thumb
-    function updateThumb(handObj, gestureName, side) {
-      if (gestureName === "Thumb_Up") {
-        handObj.thumbDir = 1;
-      } else if (gestureName === "Thumb_Down") {
-        handObj.thumbDir = -1;
-      } else {
-        handObj.thumbDir = 0;
-      }
+function onResults(res){
+  ctx.save();
+  ctx.clearRect(0,0,overlay.width,overlay.height);
+  if(drawImage && res.image) ctx.drawImage(res.image,0,0,overlay.width,overlay.height);
 
-      handObj.thumbValue = clampMidi(handObj.thumbValue + handObj.thumbDir * STEP);
-      handObj.lastThumb = gestureName || "none";
+  /* Resolve one gesture per hand (respecting Flip Hands) */
+  let rightGesture=null, leftGesture=null;
+  res.handednesses?.forEach((hand,i)=>{
+    const raw   = hand[0].categoryName;                       // "Left" / "Right"
+    const label = flipHands ? (raw==="Right"?"Left":"Right") : raw;
+    const gest  = res.gestures.length ? res.gestures[i][0].categoryName : null;
+    if(label==="Right") rightGesture=gest; else if(label==="Left") leftGesture=gest;
+  });
 
-      if (side === "R") {
-        outputValue("valueR_thumb", handObj.thumbValue);
-      } else {
-        outputValue("valueL_thumb", handObj.thumbValue);
-      }
-    }
+  /* Dispatch to the active mode only */
+  if      (currentMode==="notes")  handleNotes (rightGesture, leftGesture);
+  else if (currentMode==="chords") handleChords(rightGesture, leftGesture);
+  else                             handleCC    (rightGesture, leftGesture);
 
-    // Pointing/Victory ramp: Victory ↑, Pointing_Up ↓ → valueR_pv / valueL_pv
-    function updatePV(handObj, gestureName, side) {
-      if (gestureName === "Victory") {
-        handObj.pvDir = 1;
-      } else if (gestureName === "Pointing_Up") {
-        handObj.pvDir = -1;
-      } else {
-        handObj.pvDir = 0;
-      }
-
-      handObj.pvValue = clampMidi(handObj.pvValue + handObj.pvDir * STEP);
-      handObj.lastPV = gestureName || "none";
-
-      if (side === "R") {
-        outputValue("valueR_pv", handObj.pvValue);
-      } else {
-        outputValue("valueL_pv", handObj.pvValue);
-      }
-    }
-
-    function updateDisplay() {
-      const f = v => String(Math.round(v)).padStart(3, " ");  // show whole MIDI 0–127
-      noteDisplay.textContent =
-        `R main:  ${f(handR.mainValue)} (${handR.lastMain}) → CC25\n` +
-        `R thumb: ${f(handR.thumbValue)} (${handR.lastThumb}) → CC27\n` +
-        `R pv:    ${f(handR.pvValue)} (${handR.lastPV}) → CC29\n` +
-        `L main:  ${f(handL.mainValue)} (${handL.lastMain}) → CC26\n` +
-        `L thumb: ${f(handL.thumbValue)} (${handL.lastThumb}) → CC28\n` +
-        `L pv:    ${f(handL.pvValue)} (${handL.lastPV}) → CC30`;
-    }
-
-    /* ---------- MEDIAPIPE SETUP ---------- */
-    const filesetResolver = await FilesetResolver.forVisionTasks(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0/wasm"
-    );
-
-    const recognizer = await GestureRecognizer.createFromOptions(filesetResolver, {
-      baseOptions: {
-        modelAssetPath:
-          "https://storage.googleapis.com/mediapipe-models/gesture_recognizer/gesture_recognizer/float16/1/gesture_recognizer.task",
-        delegate: "GPU"
-      },
-      runningMode: "VIDEO",
-      numHands: 2
+  /* Landmarks */
+  if(drawHands && res.landmarks){
+    res.landmarks.forEach(lm=>{
+      drawing.drawConnectors(lm, GestureRecognizer.HAND_CONNECTIONS, {color:"#00FF00",lineWidth:1});
+      drawing.drawLandmarks(lm, {color:"#FF0000",fillColor:"#FF0000",lineWidth:1});
     });
+  }
+  ctx.restore();
+}
 
-    const drawing = new DrawingUtils(ctx);
+/* ============================================================
+   MODE HANDLERS
+   ============================================================ */
 
-    /* ---------- MAIN LOOP ---------- */
-    let lastVideoTime = -1;
+/* Left hand → channel + sustain (shared by Notes & Chords) */
+function handleLeftChannelSustain(gest){
+  if(gestureToChannel[gest] && activeChannel!==gestureToChannel[gest]) setActiveChannel(gestureToChannel[gest]);
+  if(gest===sustainOnGesture  && !sustainLatch[activeChannel]){ sendCC64(activeChannel,127); sustainLatch[activeChannel]=true;  showSustainStatus(); }
+  if(gest===sustainOffGesture &&  sustainLatch[activeChannel]){ sendCC64(activeChannel,0);   sustainLatch[activeChannel]=false; showSustainStatus(); }
+}
 
-    function loop() {
-      if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
-        lastVideoTime = video.currentTime;
-        const res = recognizer.recognizeForVideo(video, Date.now());
-        res.image = video;
-        onResults(res);
-      }
-      requestAnimationFrame(loop);
+function handleNotes(rg, lg){
+  handleLeftChannelSustain(lg);
+  const note = gestureToNote[rg];
+  const s = noteState;
+  if(note!==undefined){
+    if(s.note!==note || s.channel!==activeChannel){
+      if(s.note!==null) sendNoteOff(s.channel, s.note);
+      sendNoteOn(activeChannel, note, 80);
+      s.note=note; s.channel=activeChannel;
     }
+    noteDisplay.textContent = `${rg} → ${note} (Ch${activeChannel})`;
+  }else{
+    if(s.note!==null){ sendNoteOff(s.channel, s.note); s.note=s.channel=null; }
+    noteDisplay.textContent = "No note playing";
+  }
+}
 
-    function onResults(res) {
-      ctx.save();
-      ctx.clearRect(0, 0, overlay.width, overlay.height);
-
-      // Draw image (video or still)
-      if (drawImage && res.image) {
-        ctx.drawImage(res.image, 0, 0, overlay.width, overlay.height);
-      }
-
-      let rightHandGesture = null;
-      let leftHandGesture  = null;
-
-      // Detect gestures per hand (respect Flip Hands toggle)
-      res.handednesses?.forEach((hand, i) => {
-        const rawLabel = hand[0].categoryName; // "Left" or "Right"
-        const label = flipHands
-          ? (rawLabel === "Right" ? "Left" : "Right")
-          : rawLabel;
-
-        const gest = res.gestures.length ? res.gestures[i][0].categoryName : null;
-
-        if (label === "Right") {
-          rightHandGesture = gest;
-        } else if (label === "Left") {
-          leftHandGesture = gest;
-        }
-      });
-
-      // Update ALL ramps per hand with the single gesture
-      updateMain(handR, rightHandGesture, "R");
-      updateThumb(handR, rightHandGesture, "R");
-      updatePV(handR, rightHandGesture, "R");
-
-      updateMain(handL, leftHandGesture, "L");
-      updateThumb(handL, leftHandGesture, "L");
-      updatePV(handL, leftHandGesture, "L");
-
-      updateDisplay();
-
-      // Draw landmarks
-      if (drawHands && res.landmarks) {
-        res.landmarks.forEach(lm => {
-          drawing.drawConnectors(
-            lm,
-            GestureRecognizer.HAND_CONNECTIONS,
-            { color: "#00FF00", lineWidth: 1 }
-          );
-          drawing.drawLandmarks(
-            lm,
-            { color: "#FF0000", fillColor: "#FF0000", lineWidth: 1 }
-          );
-        });
-      }
-
-      ctx.restore();
+function handleChords(rg, lg){
+  handleLeftChannelSustain(lg);
+  const chord = gestureToChord[rg];
+  const s = chordState;
+  if(chord!==undefined){
+    if(!sameChord(s.chord, chord.notes) || s.channel!==activeChannel){
+      if(s.chord!==null) sendChordOff(s.channel, s.chord);
+      sendChordOn(activeChannel, chord.notes, 80);
+      s.chord=[...chord.notes]; s.chordName=chord.name; s.channel=activeChannel;
     }
+    noteDisplay.textContent = `${rg} → ${chord.name} (Ch${activeChannel})`;
+  }else{
+    if(s.chord!==null){ sendChordOff(s.channel, s.chord); s.chord=s.chordName=s.channel=null; }
+    noteDisplay.textContent = "No chord playing";
+  }
+}
 
-    /* ---------- CAMERA / IMAGE ---------- */
+/* CC ramps: held gesture nudges the value up/down each frame */
+const clampMidi = x => x<0 ? 0 : x>127 ? 127 : x;
+function updateMain(h, g, side){
+  h.mainDir = g==="Open_Palm" ? 1 : g==="Closed_Fist" ? -1 : 0;
+  h.mainValue = clampMidi(h.mainValue + h.mainDir*STEP);
+  h.lastMain = g || "none";
+  outputValue(side==="R"?"valueR":"valueL", h.mainValue);
+}
+function updateThumb(h, g, side){
+  h.thumbDir = g==="Thumb_Up" ? 1 : g==="Thumb_Down" ? -1 : 0;
+  h.thumbValue = clampMidi(h.thumbValue + h.thumbDir*STEP);
+  h.lastThumb = g || "none";
+  outputValue(side==="R"?"valueR_thumb":"valueL_thumb", h.thumbValue);
+}
+function updatePV(h, g, side){
+  h.pvDir = g==="Victory" ? 1 : g==="Pointing_Up" ? -1 : 0;
+  h.pvValue = clampMidi(h.pvValue + h.pvDir*STEP);
+  h.lastPV = g || "none";
+  outputValue(side==="R"?"valueR_pv":"valueL_pv", h.pvValue);
+}
+function updateCCDisplay(){
+  const f = v => String(Math.round(v)).padStart(3," ");
+  noteDisplay.textContent =
+    `R main:  ${f(handR.mainValue)} (${handR.lastMain}) → CC25\n` +
+    `R thumb: ${f(handR.thumbValue)} (${handR.lastThumb}) → CC27\n` +
+    `R pv:    ${f(handR.pvValue)} (${handR.lastPV}) → CC29\n` +
+    `L main:  ${f(handL.mainValue)} (${handL.lastMain}) → CC26\n` +
+    `L thumb: ${f(handL.thumbValue)} (${handL.lastThumb}) → CC28\n` +
+    `L pv:    ${f(handL.pvValue)} (${handL.lastPV}) → CC30`;
+}
+function handleCC(rg, lg){
+  updateMain(handR, rg, "R"); updateThumb(handR, rg, "R"); updatePV(handR, rg, "R");
+  updateMain(handL, lg, "L"); updateThumb(handL, lg, "L"); updatePV(handL, lg, "L");
+  updateCCDisplay();
+}
 
-    async function populateCameras() {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const cams = devices.filter(d => d.kind === 'videoinput');
+/* ============================================================
+   MODE SWITCHING  (releases held sound, swaps UI — no camera touch)
+   ============================================================ */
+function releaseHeldNoteAndChord(){
+  if(noteState.note!==null){ sendNoteOff(noteState.channel, noteState.note); noteState.note=noteState.channel=null; }
+  if(chordState.chord!==null){ sendChordOff(chordState.channel, chordState.chord); chordState.chord=chordState.chordName=chordState.channel=null; }
+}
 
-      cams.forEach(c => {
-        const opt = new Option(c.label || `Camera ${deviceSelect.length + 1}`, c.deviceId);
-        deviceSelect.add(opt);
-      });
+const CARD = {
+  notes: `
+    <h3>Left Hand — Channel &amp; Sustain</h3>
+    <div class="line">✊  Closed Fist  → Ch1 · Strings</div>
+    <div class="line">✋  Open Palm    → Ch2 · AcousticGuitar</div>
+    <div class="line">☝️  Pointing Up  → Ch3 · Drums</div>
+    <div class="line">✌️  Victory      → Ch4 · Electric Guitar</div>
+    <div class="line">👍  Thumb Up     → Sustain ON</div>
+    <div class="line">👎  Thumb Down   → Sustain OFF</div>
+    <h3 style="margin-top:10px;">Right Hand — Notes</h3>
+    <div class="line">✋  Open Palm    → C4</div>
+    <div class="line">✊  Closed Fist  → D4</div>
+    <div class="line">☝️  Pointing Up  → D♯4 / E♭4</div>
+    <div class="line">✌️  Victory      → F4</div>
+    <div class="line">👍  Thumb Up     → G4</div>
+    <div class="line">👎  Thumb Down   → G♯4 / A♭4</div>
+    <div class="line">🤟  I-Love-You   → A♯4 / B♭4</div>
+    <div class="note">Notes play on the active channel. Any other gesture (or hand out of frame) releases the note. Flip Hands swaps L/R.</div>`,
+  chords: `
+    <h3>Left Hand — Channel &amp; Sustain</h3>
+    <div class="line">✊  Closed Fist  → Ch1 · Strings</div>
+    <div class="line">✋  Open Palm    → Ch2 · AcousticGuitar</div>
+    <div class="line">☝️  Pointing Up  → Ch3 · Drums</div>
+    <div class="line">✌️  Victory      → Ch4 · Electric Guitar</div>
+    <div class="line">👍  Thumb Up     → Sustain ON</div>
+    <div class="line">👎  Thumb Down   → Sustain OFF</div>
+    <h3 style="margin-top:10px;">Right Hand — C Minor Chords</h3>
+    <div class="line">✋  Open Palm    → C minor</div>
+    <div class="line">✊  Closed Fist  → D diminished</div>
+    <div class="line">☝️  Pointing Up  → E♭ major</div>
+    <div class="line">✌️  Victory      → F minor</div>
+    <div class="line">👍  Thumb Up     → G minor</div>
+    <div class="line">👎  Thumb Down   → A♭ major</div>
+    <div class="line">🤟  I-Love-You   → B♭ major</div>
+    <div class="note">Chords play on the active channel. Any other gesture (or hand out of frame) releases the chord. Flip Hands swaps L/R.</div>`,
+  cc: `
+    <h3>Both Hands — CC Ramps</h3>
+    <div class="note" style="margin:0 0 6px;">Hold a gesture to ramp the value up/down. Released = holds its value.</div>
+    <h3 style="margin-top:6px;">Right Hand</h3>
+    <div class="line">✋ ↑ / ✊ ↓   → CC25</div>
+    <div class="line">👍 ↑ / 👎 ↓   → CC27</div>
+    <div class="line">✌️ ↑ / ☝️ ↓   → CC29</div>
+    <h3 style="margin-top:10px;">Left Hand</h3>
+    <div class="line">✋ ↑ / ✊ ↓   → CC26</div>
+    <div class="line">👍 ↑ / 👎 ↓   → CC28</div>
+    <div class="line">✌️ ↑ / ☝️ ↓   → CC30</div>
+    <div class="note">All CC sent on MIDI channel 1 (CC25–CC30). Flip Hands swaps L/R.</div>`
+};
 
-      deviceSelect.onchange = () => {
-        const id = deviceSelect.value || undefined;
-        startVideo(id);
-      };
-    }
+function setMode(mode){
+  if(mode===currentMode) return;
+  releaseHeldNoteAndChord();          // clean transition
+  currentMode = mode;
 
-    async function startVideo(deviceId) {
-      const constraints = {
-        video: deviceId ? { deviceId: { exact: deviceId } } : true
-      };
+  // highlight active button
+  document.querySelectorAll('#mode-bar button').forEach(b=>b.classList.toggle('active', b.dataset.mode===mode));
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      video.srcObject = stream;
-      await video.play();
+  // show/hide mode-specific controls
+  const isCC = mode==="cc";
+  document.querySelectorAll('.cc-only').forEach(el=>el.style.display = isCC ? '' : 'none');
+  document.querySelectorAll('.note-chord-only').forEach(el=>el.style.display = isCC ? 'none' : '');
 
-      video.style.display   = "";
-      imageEl.style.display = "none";
+  // swap instruction card + reset readout
+  compCard.innerHTML = CARD[mode];
+  showSustainStatus();
+  if(mode==="notes")      noteDisplay.textContent = "No note playing";
+  else if(mode==="chords")noteDisplay.textContent = "No chord playing";
+  else                    updateCCDisplay();
+}
 
-      // Match canvas size to video element size
-      const rect = video.getBoundingClientRect();
-      overlay.width  = rect.width  || 960;
-      overlay.height = rect.height || 720;
+document.querySelectorAll('#mode-bar button').forEach(btn=>{
+  btn.onclick = () => setMode(btn.dataset.mode);
+});
 
-      loop();
-    }
+/* ============================================================
+   CAMERA / IMAGE
+   ============================================================ */
+async function populateCameras(){
+  const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');
+  deviceSelect.innerHTML = "";
+  cams.forEach(c=> deviceSelect.add(new Option(c.label || `Camera ${deviceSelect.length+1}`, c.deviceId)));
+  deviceSelect.onchange = () => startVideo(deviceSelect.value || undefined);
+}
+async function startVideo(deviceId){
+  try{
+    const cs = { video: deviceId ? { deviceId:{ exact:deviceId } } : true };
+    video.srcObject = await navigator.mediaDevices.getUserMedia(cs);
+    await video.play();
+    video.style.display = ""; imageEl.style.display = "none";
+  }catch(e){
+    console.error("startVideo error:",e);
+    noteDisplay.textContent = "⚠️ Camera unavailable — check permissions";
+  }
+}
+function stopVideo(){
+  try{
+    video.srcObject?.getTracks().forEach(t=>t.stop());
+    video.pause();
+    video.srcObject = null;
+    video.style.display = "none";
+    ctx.clearRect(0,0,overlay.width,overlay.height);
+    noteDisplay.textContent = "📷 Video stopped";
+    lastVideoTime = -1;
+  }catch(e){ console.error("Stop video error:",e); }
+}
 
-    function stopVideo() {
-      try {
-        const stream = video.srcObject;
-        if (stream) {
-          stream.getTracks().forEach(t => t.stop());
-        }
-        video.pause();
-        video.srcObject = null;
-        video.style.display = "none";
-        ctx.clearRect(0, 0, overlay.width, overlay.height);
-        noteDisplay.textContent = "📷 Video stopped";
-        lastVideoTime = -1;
-      } catch (e) {
-        console.error("Stop video error:", e);
-      }
-    }
+/* ============================================================
+   UI HANDLERS
+   ============================================================ */
+document.getElementById('start-video').onclick = () => startVideo(deviceSelect.value || undefined);
+document.getElementById('stop-video').onclick  = stopVideo;
 
-    /* ---------- MIDI UI ---------- */
+document.getElementById('upload-image').onchange = e => {
+  const f = e.target.files[0]; if(!f) return;
+  imageEl.src = URL.createObjectURL(f);
+  imageEl.onload = () => {
+    imageEl.style.display = ""; video.style.display = "none"; flipImgBtn.disabled = false;
+    onResults({ image:imageEl, landmarks:[], handednesses:[], gestures:[] });
+  };
+};
 
-    function refreshMidiOutputs() {
-      const previousOutputId = midiOutputSelect.value;
+document.getElementById('toggle-draw-image').onchange = e => drawImage = e.target.checked;
+document.getElementById('toggle-draw-hands').onchange = e => drawHands = e.target.checked;
+document.getElementById('toggle-flip-hands').onchange = e => flipHands = e.target.checked;
 
-      midiOutputSelect.innerHTML = "";
-      midiOutputSelect.add(new Option("No MIDI output", ""));
+flipVideoBtn.onclick = () => {
+  flipVideo = !flipVideo;
+  const s = flipVideo ? -1 : 1;
+  video.style.transform = `scaleX(${s})`;
+  overlay.style.transform = `scaleX(${s})`;
+};
+flipImgBtn.onclick = () => {
+  flipImage = !flipImage;
+  imageEl.style.transform = `scaleX(${flipImage ? -1 : 1})`;
+  overlay.style.transform = flipVideo ? `scaleX(-1)` : `scaleX(1)`;
+};
 
-      if (!midiAccess) return;
+/* ============================================================
+   PANIC — stop everything across all modes
+   ============================================================ */
+function stopAllSound(){
+  sustainLatch.fill(false); showSustainStatus();
+  releaseHeldNoteAndChord();
 
-      for (const output of midiAccess.outputs.values()) {
-        midiOutputSelect.add(new Option(output.name || output.id, output.id));
-      }
+  // reset CC ramps + send them to 0
+  [handR,handL].forEach(h=>{ h.mainValue=h.thumbValue=h.pvValue=0; h.mainDir=h.thumbDir=h.pvDir=0; });
+  for(const name in CC_MAP) sendRawCC(CC_MAP[name], 0, true);
 
-      // Prefer keeping the previously selected output. Otherwise auto-select the first available output.
-      let selectedOutput = null;
-      if (previousOutputId && midiAccess.outputs.has(previousOutputId)) {
-        selectedOutput = midiAccess.outputs.get(previousOutputId);
-      } else if (midiAccess.outputs.size > 0) {
-        selectedOutput = midiAccess.outputs.values().next().value;
-      }
+  // global MIDI panic, channels 1..16
+  for(let ch=1; ch<=16; ch++){
+    midiOutput?.send([0xB0+(ch-1),64,0]);   // sustain off
+    midiOutput?.send([0xB0+(ch-1),123,0]);  // all notes off
+    midiOutput?.send([0xB0+(ch-1),120,0]);  // all sound off
+  }
+  if(currentMode==="cc") updateCCDisplay(); else noteDisplay.textContent = "⛔ Stopped all sound";
+}
+document.getElementById('panic').onclick = stopAllSound;
 
-      if (selectedOutput) {
-        midiOutputSelect.value = selectedOutput.id;
-        midiOutput = selectedOutput;
-        lastSentCC.clear();
-        setMidiStatus(`MIDI: ready → ${getOutputName(midiOutput)} | CC25–30`);
-      } else {
-        midiOutputSelect.value = "";
-        midiOutput = null;
-        setMidiStatus("MIDI: no outputs found — enable IAC Driver / virtual MIDI port");
-      }
-    }
-
-    async function enableMIDI() {
-      if (!navigator.requestMIDIAccess) {
-        setMidiStatus("MIDI: WebMIDI not supported here");
-        alert("WebMIDI is not supported here. Use Chrome/Edge as a normal browser, ideally from localhost or HTTPS.");
-        return;
-      }
-
-      try {
-        midiAccess = await navigator.requestMIDIAccess({ sysex: false });
-        midiAccess.onstatechange = refreshMidiOutputs;
-        refreshMidiOutputs();
-      } catch (err) {
-        console.error("MIDI access error:", err);
-        setMidiStatus("MIDI: permission denied/error");
-        alert("MIDI permission was denied or failed. In Chrome/Edge, allow MIDI access, then reload and try again.");
-      }
-    }
-
-    enableMidiBtn.onclick = enableMIDI;
-
-    midiOutputSelect.onchange = async () => {
-      midiOutput = midiAccess
-        ? midiAccess.outputs.get(midiOutputSelect.value) || null
-        : null;
-
-      lastSentCC.clear();
-
-      if (midiOutput && typeof midiOutput.open === "function") {
-        try { await midiOutput.open(); } catch (err) { console.warn("MIDI output open warning:", err); }
-      }
-
-      setMidiStatus(midiOutput
-        ? `MIDI: ready → ${getOutputName(midiOutput)} | CC25–30`
-        : "MIDI: off");
-    };
-
-    testCCHighBtn.onclick = async () => {
-      if (!midiAccess) await enableMIDI();
-      sendRawCC(25, 127, true);
-    };
-
-    testCCLowBtn.onclick = async () => {
-      if (!midiAccess) await enableMIDI();
-      sendRawCC(25, 0, true);
-    };
-
-    /* ---------- UI HANDLERS ---------- */
-
-    startBtn.onclick = () => {
-      const id = deviceSelect && deviceSelect.value ? deviceSelect.value : undefined;
-      startVideo(id);
-    };
-
-    stopBtn.onclick = stopVideo;
-
-    uploadInput.onchange = e => {
-      const f = e.target.files[0];
-      if (!f) return;
-
-      const url = URL.createObjectURL(f);
-      imageEl.src = url;
-      imageEl.onload = () => {
-        imageEl.style.display = "";
-        video.style.display = "none";
-        flipImgBtn.disabled = false;
-
-        const rect = imageEl.getBoundingClientRect();
-        overlay.width  = rect.width  || 960;
-        overlay.height = rect.height || 720;
-
-        onResults({
-          image: imageEl,
-          landmarks: [],
-          handednesses: [],
-          gestures: []
-        });
-      };
-    };
-
-    toggleDrawImage.onchange = e => {
-      drawImage = e.target.checked;
-    };
-
-    toggleDrawHands.onchange = e => {
-      drawHands = e.target.checked;
-    };
-
-    toggleFlipHands.onchange = e => {
-      flipHands = e.target.checked;
-    };
-
-    flipVideoBtn.onclick = () => {
-      flipVideo = !flipVideo;
-      const s = flipVideo ? -1 : 1;
-      video.style.transform   = `scaleX(${s})`;
-      overlay.style.transform = `scaleX(${s})`;
-    };
-
-    flipImgBtn.onclick = () => {
-      flipImage = !flipImage;
-      const s = flipImage ? -1 : 1;
-      imageEl.style.transform = `scaleX(${s})`;
-      overlay.style.transform = flipVideo ? `scaleX(-1)` : `scaleX(1)`;
-    };
-
-    /* ---------- BOOT ---------- */
-    await populateCameras();
-    startVideo();
-  </script>
+/* ============================================================
+   BOOT  (camera + MIDI acquired ONCE)
+   ============================================================ */
+setActiveChannel(1);
+setMode('notes');
+await initMIDI();
+await startVideo();        // single permission prompt for the whole session
+await populateCameras();   // labels available now that permission is granted
+loop();                    // single perpetual recognition loop
+</script>
 </body>
 </html>
