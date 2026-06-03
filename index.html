@@ -151,12 +151,12 @@
   <!-- MAIN DISPLAY -->
   <div id="display-area">
     <div id="note-display">
-R main: 0.000 (none) → CC25
-R thumb: 0.000 (none) → CC27
-R pv:    0.000 (none) → CC29
-L main: 0.000 (none) → CC26
-L thumb:0.000 (none) → CC28
-L pv:   0.000 (none) → CC30
+R main:    0 (none) → CC25
+R thumb:   0 (none) → CC27
+R pv:      0 (none) → CC29
+L main:    0 (none) → CC26
+L thumb:   0 (none) → CC28
+L pv:      0 (none) → CC30
     </div>
     <div id="container">
       <video id="videoel" autoplay playsinline style="display:none"></video>
@@ -197,8 +197,9 @@ L pv:   0.000 (none) → CC30
     const MIDI_STATUS_CC_CH1 = 0xB0;
     const lastSentCC = new Map();
 
+    // Ramp values now live directly in MIDI range (0–127); just clamp + round.
     function valueToMidi(value) {
-      return Math.max(0, Math.min(127, Math.round(value * 127)));
+      return Math.max(0, Math.min(127, Math.round(value)));
     }
 
     function setMidiStatus(text) {
@@ -239,8 +240,11 @@ L pv:   0.000 (none) → CC30
     }
 
     // Send to both Max and direct MIDI CC.
+    // value is now in MIDI range (0–127):
+    //   • MIDI gets the raw 0–127 value.
+    //   • Max gets a normalized 0–1 so any existing Max patch keeps the range it expects.
     function outputValue(name, value) {
-      maxOut(name, value);
+      maxOut(name, value / 127);
       sendCC(name, value);
     }
     /* -------------------------------------- */
@@ -273,8 +277,13 @@ L pv:   0.000 (none) → CC30
     let flipVideo = false;
     let flipImage = false;
 
-    /* ---------- VALUE STATE (0.0–1.0) ---------- */
-    const STEP = 0.01;  // ramp speed
+    /* ---------- VALUE STATE (MIDI 0–127) ---------- */
+    // Each ramp value now lives directly in MIDI CC range (0–127) as a float,
+    // so the hand gestures act as a gradual 0–127 CC controller. We keep it as a
+    // float for smooth ramping and only round when sending MIDI / drawing the readout.
+    const RAMP_FRACTION_PER_FRAME = 0.01;        // ~100 frames for a full 0→127 sweep (same feel as before)
+    const STEP = RAMP_FRACTION_PER_FRAME * 127;  // MIDI units added/removed per video frame
+    //   ↑ raise STEP for faster ramps, lower it for finer/slower control.
 
     const handR = {
       mainValue:  0.0, mainDir:  0, lastMain:  "none",   // Open_Palm / Closed_Fist
@@ -288,9 +297,10 @@ L pv:   0.000 (none) → CC30
       pvValue:    0.0, pvDir:    0, lastPV:    "none"
     };
 
-    function clamp01(x) {
+    // Clamp to the MIDI CC range.
+    function clampMidi(x) {
       if (x < 0) return 0;
-      if (x > 1) return 1;
+      if (x > 127) return 127;
       return x;
     }
 
@@ -306,7 +316,7 @@ L pv:   0.000 (none) → CC30
         handObj.mainDir = 0;
       }
 
-      handObj.mainValue = clamp01(handObj.mainValue + handObj.mainDir * STEP);
+      handObj.mainValue = clampMidi(handObj.mainValue + handObj.mainDir * STEP);
       handObj.lastMain = gestureName || "none";
 
       if (side === "R") {
@@ -326,7 +336,7 @@ L pv:   0.000 (none) → CC30
         handObj.thumbDir = 0;
       }
 
-      handObj.thumbValue = clamp01(handObj.thumbValue + handObj.thumbDir * STEP);
+      handObj.thumbValue = clampMidi(handObj.thumbValue + handObj.thumbDir * STEP);
       handObj.lastThumb = gestureName || "none";
 
       if (side === "R") {
@@ -346,7 +356,7 @@ L pv:   0.000 (none) → CC30
         handObj.pvDir = 0;
       }
 
-      handObj.pvValue = clamp01(handObj.pvValue + handObj.pvDir * STEP);
+      handObj.pvValue = clampMidi(handObj.pvValue + handObj.pvDir * STEP);
       handObj.lastPV = gestureName || "none";
 
       if (side === "R") {
@@ -357,13 +367,14 @@ L pv:   0.000 (none) → CC30
     }
 
     function updateDisplay() {
+      const f = v => String(Math.round(v)).padStart(3, " ");  // show whole MIDI 0–127
       noteDisplay.textContent =
-        `R main:  ${handR.mainValue.toFixed(3)} (${handR.lastMain}) → CC25\n` +
-        `R thumb: ${handR.thumbValue.toFixed(3)} (${handR.lastThumb}) → CC27\n` +
-        `R pv:    ${handR.pvValue.toFixed(3)} (${handR.lastPV}) → CC29\n` +
-        `L main:  ${handL.mainValue.toFixed(3)} (${handL.lastMain}) → CC26\n` +
-        `L thumb: ${handL.thumbValue.toFixed(3)} (${handL.lastThumb}) → CC28\n` +
-        `L pv:    ${handL.pvValue.toFixed(3)} (${handL.lastPV}) → CC30`;
+        `R main:  ${f(handR.mainValue)} (${handR.lastMain}) → CC25\n` +
+        `R thumb: ${f(handR.thumbValue)} (${handR.lastThumb}) → CC27\n` +
+        `R pv:    ${f(handR.pvValue)} (${handR.lastPV}) → CC29\n` +
+        `L main:  ${f(handL.mainValue)} (${handL.lastMain}) → CC26\n` +
+        `L thumb: ${f(handL.thumbValue)} (${handL.lastThumb}) → CC28\n` +
+        `L pv:    ${f(handL.pvValue)} (${handL.lastPV}) → CC30`;
     }
 
     /* ---------- MEDIAPIPE SETUP ---------- */
