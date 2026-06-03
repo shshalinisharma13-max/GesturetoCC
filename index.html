@@ -108,21 +108,30 @@ import { GestureRecognizer, FilesetResolver, DrawingUtils }
    MODE MAPS
    ============================================================ */
 
-/* ----- Right hand → single notes (Notes mode) ----- */
+/* ----- Right hand → single notes (Notes mode) — Raag Bhairav: S r G M P d N ----- */
 const gestureToNote = {
-  Open_Palm:60, Closed_Fist:62, Pointing_Up:63, Victory:65,
-  Thumb_Up:67,  Thumb_Down:68,  ILoveYou:70
+  Open_Palm:60,   // C4   Sa
+  Closed_Fist:61, // C#4  re  (komal Re)
+  Pointing_Up:64, // E4   Ga
+  Victory:65,     // F4   Ma
+  Thumb_Up:67,    // G4   Pa
+  Thumb_Down:68,  // G#4  dha (komal Dha)
+  ILoveYou:71     // B4   Ni
 };
 
-/* ----- Right hand → C-minor diatonic triads (Chords mode) ----- */
+/* ----- Right hand → Raag Bhairav diatonic triads (Chords mode) -----
+   Built by stacking scale-thirds on each swara of S r G M P d N
+   (C C# E F G G# B). The scale's two augmented seconds make the
+   chords on Pa (G) and Ni (B) characteristically non-tertian.
+------------------------------------------------------------------- */
 const gestureToChord = {
-  Open_Palm  :{name:"Cm",   notes:[60,63,67]}, // C  - E♭ - G
-  Closed_Fist:{name:"Ddim", notes:[62,65,68]}, // D  - F  - A♭
-  Pointing_Up:{name:"E♭",   notes:[63,67,70]}, // E♭ - G  - B♭
-  Victory    :{name:"Fm",   notes:[65,68,72]}, // F  - A♭ - C
-  Thumb_Up   :{name:"Gm",   notes:[67,70,74]}, // G  - B♭ - D
-  Thumb_Down :{name:"A♭",   notes:[68,72,75]}, // A♭ - C  - E♭
-  ILoveYou   :{name:"B♭",   notes:[70,74,77]}  // B♭ - D  - F
+  Open_Palm  :{name:"C",      notes:[60,64,67]}, // Sa : C  - E  - G   (major)
+  Closed_Fist:{name:"C♯",     notes:[61,65,68]}, // re : C# - F  - G#  (major)
+  Pointing_Up:{name:"Em",     notes:[64,67,71]}, // Ga : E  - G  - B   (minor)
+  Victory    :{name:"Fm",     notes:[65,68,72]}, // Ma : F  - G# - C   (minor)
+  Thumb_Up   :{name:"G♭5",    notes:[67,71,73]}, // Pa : G  - B  - C#  (major ♭5)
+  Thumb_Down :{name:"G♯aug",  notes:[68,72,76]}, // dha: G# - C  - E   (augmented)
+  ILoveYou   :{name:"Bsus♭5", notes:[71,73,77]}  // Ni : B  - C# - F   (sus2 ♭5)
 };
 
 /* ----- Left hand → channel select (Notes & Chords) ----- */
@@ -405,15 +414,15 @@ const CARD = {
     <div class="line">✌️  Victory      → Ch4 · Electric Guitar</div>
     <div class="line">👍  Thumb Up     → Sustain ON</div>
     <div class="line">👎  Thumb Down   → Sustain OFF</div>
-    <h3 style="margin-top:10px;">Right Hand — Notes</h3>
-    <div class="line">✋  Open Palm    → C4</div>
-    <div class="line">✊  Closed Fist  → D4</div>
-    <div class="line">☝️  Pointing Up  → D♯4 / E♭4</div>
-    <div class="line">✌️  Victory      → F4</div>
-    <div class="line">👍  Thumb Up     → G4</div>
-    <div class="line">👎  Thumb Down   → G♯4 / A♭4</div>
-    <div class="line">🤟  I-Love-You   → A♯4 / B♭4</div>
-    <div class="note">Notes play on the active channel. Any other gesture (or hand out of frame) releases the note. Flip Hands swaps L/R.</div>`,
+    <h3 style="margin-top:10px;">Right Hand — Notes · Raag Bhairav</h3>
+    <div class="line">✋  Open Palm    → C4   (Sa)</div>
+    <div class="line">✊  Closed Fist  → C♯4  (re)</div>
+    <div class="line">☝️  Pointing Up  → E4   (Ga)</div>
+    <div class="line">✌️  Victory      → F4   (Ma)</div>
+    <div class="line">👍  Thumb Up     → G4   (Pa)</div>
+    <div class="line">👎  Thumb Down   → G♯4  (dha)</div>
+    <div class="line">🤟  I-Love-You   → B4   (Ni)</div>
+    <div class="note">Raag Bhairav: S r G M P d N. Notes play on the active channel. Any other gesture (or hand out of frame) releases the note. Flip Hands swaps L/R.</div>`,
   chords: `
     <h3>Left Hand — Channel &amp; Sustain</h3>
     <div class="line">✊  Closed Fist  → Ch1 · Strings</div>
@@ -422,15 +431,15 @@ const CARD = {
     <div class="line">✌️  Victory      → Ch4 · Electric Guitar</div>
     <div class="line">👍  Thumb Up     → Sustain ON</div>
     <div class="line">👎  Thumb Down   → Sustain OFF</div>
-    <h3 style="margin-top:10px;">Right Hand — C Minor Chords</h3>
-    <div class="line">✋  Open Palm    → C minor</div>
-    <div class="line">✊  Closed Fist  → D diminished</div>
-    <div class="line">☝️  Pointing Up  → E♭ major</div>
-    <div class="line">✌️  Victory      → F minor</div>
-    <div class="line">👍  Thumb Up     → G minor</div>
-    <div class="line">👎  Thumb Down   → A♭ major</div>
-    <div class="line">🤟  I-Love-You   → B♭ major</div>
-    <div class="note">Chords play on the active channel. Any other gesture (or hand out of frame) releases the chord. Flip Hands swaps L/R.</div>`,
+    <h3 style="margin-top:10px;">Right Hand — Bhairav Chords</h3>
+    <div class="line">✋  Open Palm    → C      (C·E·G)</div>
+    <div class="line">✊  Closed Fist  → C♯     (C♯·F·G♯)</div>
+    <div class="line">☝️  Pointing Up  → Em     (E·G·B)</div>
+    <div class="line">✌️  Victory      → Fm     (F·G♯·C)</div>
+    <div class="line">👍  Thumb Up     → G♭5    (G·B·C♯)</div>
+    <div class="line">👎  Thumb Down   → G♯aug  (G♯·C·E)</div>
+    <div class="line">🤟  I-Love-You   → Bsus♭5 (B·C♯·F)</div>
+    <div class="note">Diatonic triads of Raag Bhairav. The chords on Pa (G♭5) and Ni (Bsus♭5) are the scale's characteristic non-tertian sonorities. Flip Hands swaps L/R.</div>`,
   cc: `
     <h3>Both Hands — CC Ramps</h3>
     <div class="note" style="margin:0 0 6px;">Hold a gesture to ramp the value up/down. Released = holds its value.</div>
