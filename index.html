@@ -37,19 +37,6 @@
   #container{position:relative;width:960px;height:720px;max-width:100%;background:#000}
   #overlay,#videoel,#imageel{position:absolute;top:0;left:0}
   canvas{z-index:1;pointer-events:none}
-
-  /* ---- Side instruction card ---- */
-  .side-card{position:fixed;top:140px;z-index:20;background:#fff;color:#111;
-             border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 10px 22px rgba(0,0,0,.18)}
-  #comp-card{left:12px;width:320px;max-width:40vw;padding:10px 12px;
-             font:600 13px/1.35 ui-sans-serif,system-ui}
-  #comp-card h3{margin:0 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.6px;opacity:.7}
-  #comp-card .line{font:700 13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;
-                   background:#f6f7fb;border:1px solid #e5e7eb;border-radius:8px;
-                   padding:6px 8px;white-space:pre;margin:6px 0}
-  #comp-card .note{font:600 12px/1.3 ui-sans-serif;opacity:.7;margin-top:6px}
-
-  @media (max-width:1100px){ #comp-card{display:none} }
 </style>
 </head>
 
@@ -96,9 +83,6 @@
       <canvas id="overlay"                                 width="960" height="720"></canvas>
     </div>
   </div>
-
-  <!-- ---------- INSTRUCTION CARD (filled per mode) ---------- -->
-  <aside id="comp-card" class="side-card" aria-label="Instructions"></aside>
 
 <script type="module">
 import { GestureRecognizer, FilesetResolver, DrawingUtils }
@@ -166,7 +150,6 @@ const testLowBtn   = document.getElementById('test-cc-low');
 const midiStatus   = document.getElementById('midi-status');
 const activeChanEl = document.getElementById('active-chan');
 const sustainStateEl = document.getElementById('sustain-state');
-const compCard     = document.getElementById('comp-card');
 const flipVideoBtn = document.getElementById('flip-video');
 const flipImgBtn   = document.getElementById('flip-image');
 
@@ -405,55 +388,6 @@ function releaseHeldNoteAndChord(){
   if(chordState.chord!==null){ sendChordOff(chordState.channel, chordState.chord); chordState.chord=chordState.chordName=chordState.channel=null; }
 }
 
-const CARD = {
-  notes: `
-    <h3>Left Hand — Channel &amp; Sustain</h3>
-    <div class="line">✊  Closed Fist  → Ch1 · Strings</div>
-    <div class="line">✋  Open Palm    → Ch2 · AcousticGuitar</div>
-    <div class="line">☝️  Pointing Up  → Ch3 · Drums</div>
-    <div class="line">✌️  Victory      → Ch4 · Electric Guitar</div>
-    <div class="line">👍  Thumb Up     → Sustain ON</div>
-    <div class="line">👎  Thumb Down   → Sustain OFF</div>
-    <h3 style="margin-top:10px;">Right Hand — Notes · Raag Bhairav</h3>
-    <div class="line">✋  Open Palm    → C4   (Sa)</div>
-    <div class="line">✊  Closed Fist  → C♯4  (re)</div>
-    <div class="line">☝️  Pointing Up  → E4   (Ga)</div>
-    <div class="line">✌️  Victory      → F4   (Ma)</div>
-    <div class="line">👍  Thumb Up     → G4   (Pa)</div>
-    <div class="line">👎  Thumb Down   → G♯4  (dha)</div>
-    <div class="line">🤟  I-Love-You   → B4   (Ni)</div>
-    <div class="note">Raag Bhairav: S r G M P d N. Notes play on the active channel. Any other gesture (or hand out of frame) releases the note. Flip Hands swaps L/R.</div>`,
-  chords: `
-    <h3>Left Hand — Channel &amp; Sustain</h3>
-    <div class="line">✊  Closed Fist  → Ch1 · Strings</div>
-    <div class="line">✋  Open Palm    → Ch2 · AcousticGuitar</div>
-    <div class="line">☝️  Pointing Up  → Ch3 · Drums</div>
-    <div class="line">✌️  Victory      → Ch4 · Electric Guitar</div>
-    <div class="line">👍  Thumb Up     → Sustain ON</div>
-    <div class="line">👎  Thumb Down   → Sustain OFF</div>
-    <h3 style="margin-top:10px;">Right Hand — Bhairav Chords</h3>
-    <div class="line">✋  Open Palm    → C      (C·E·G)</div>
-    <div class="line">✊  Closed Fist  → C♯     (C♯·F·G♯)</div>
-    <div class="line">☝️  Pointing Up  → Em     (E·G·B)</div>
-    <div class="line">✌️  Victory      → Fm     (F·G♯·C)</div>
-    <div class="line">👍  Thumb Up     → G♭5    (G·B·C♯)</div>
-    <div class="line">👎  Thumb Down   → G♯aug  (G♯·C·E)</div>
-    <div class="line">🤟  I-Love-You   → Bsus♭5 (B·C♯·F)</div>
-    <div class="note">Diatonic triads of Raag Bhairav. The chords on Pa (G♭5) and Ni (Bsus♭5) are the scale's characteristic non-tertian sonorities. Flip Hands swaps L/R.</div>`,
-  cc: `
-    <h3>Both Hands — CC Ramps</h3>
-    <div class="note" style="margin:0 0 6px;">Hold a gesture to ramp the value up/down. Released = holds its value.</div>
-    <h3 style="margin-top:6px;">Right Hand</h3>
-    <div class="line">✋ ↑ / ✊ ↓   → CC25</div>
-    <div class="line">👍 ↑ / 👎 ↓   → CC27</div>
-    <div class="line">✌️ ↑ / ☝️ ↓   → CC29</div>
-    <h3 style="margin-top:10px;">Left Hand</h3>
-    <div class="line">✋ ↑ / ✊ ↓   → CC26</div>
-    <div class="line">👍 ↑ / 👎 ↓   → CC28</div>
-    <div class="line">✌️ ↑ / ☝️ ↓   → CC30</div>
-    <div class="note">All CC sent on MIDI channel 1 (CC25–CC30). Flip Hands swaps L/R.</div>`
-};
-
 function setMode(mode){
   if(mode===currentMode) return;
   releaseHeldNoteAndChord();          // clean transition
@@ -467,8 +401,7 @@ function setMode(mode){
   document.querySelectorAll('.cc-only').forEach(el=>el.style.display = isCC ? '' : 'none');
   document.querySelectorAll('.note-chord-only').forEach(el=>el.style.display = isCC ? 'none' : '');
 
-  // swap instruction card + reset readout
-  compCard.innerHTML = CARD[mode];
+  // reset readout
   showSustainStatus();
   if(mode==="notes")      noteDisplay.textContent = "No note playing";
   else if(mode==="chords")noteDisplay.textContent = "No chord playing";
